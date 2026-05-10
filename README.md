@@ -6,7 +6,11 @@ The proxy spawns on `127.0.0.1` (random port by default), exposes its address vi
 
 ## Status
 
-v0 — feature-baseline lifted from `nanite/internal/sandbox/proxy.go` (~570 LOC + tests, hardened against a 2026-04-10 sandbox audit). Correctness baseline cross-checked against the smaller clockwork-manifold proxy (~210 LOC) staged in `agent-workspaces/inbox/go-egress-proxy/`. The SSRF guard, CONNECT TLS-port allowlist, hijacked-conn drain on `Stop`, and `Host` header scrub are non-optional and covered by tests.
+Pre-1.0 (`v0.1.0`) — API may shift before `v1`, but the security-critical
+behaviours (SSRF guard, CONNECT TLS-port allowlist, hijacked-conn drain on
+`Stop`, `Host`-header scrub) are non-optional and covered by tests. See
+[godoc](https://pkg.go.dev/github.com/hollis-labs/go-egress-proxy/egress)
+for the package reference.
 
 ## Install
 
@@ -84,7 +88,7 @@ In:
 Out (intentionally):
 
 - **Hot-reload of the allowlist.** v0.1.0 is restart-to-update. Consumers that need per-tenant or per-task allowlists spin a new `Proxy` per child process — that's already the dominant pattern and it keeps `Config` immutable.
-- **Command policy / shell-denylist matching.** The clockwork-manifold seed shipped a `denylist.go` (`rm -rf`, `dd`, `mkfs`, ...) for shell-command pre-flight. That belongs in a future `go-cmdpolicy` lib, not here. Tracked under "future" in the `agent-workspaces/inbox/go-egress-proxy/README.md` triggers list.
+- **Command policy / shell-denylist matching.** Pre-flight checks against shell-command denylists (`rm -rf`, `dd`, `mkfs`, ...) belong in a separate library, not here.
 - **Auth.** No upstream HTTP auth, no client-side proxy auth (`Proxy-Authorization` is stripped). The threat model is "host-side proxy for trusted-but-confined children"; if you need auth, run the proxy behind one.
 - **Caching, response inspection, body size limits.** The proxy is a pass-through. If you need to gate response bodies (say, blocking a 5GB download), wrap your own `Logger` that observes `OnDeny` and `slog` events, or interpose between the child and the proxy with a different abstraction.
 - **Distributed / multi-instance state.** `Proxy` is per-process. Each consumer process runs its own.
@@ -94,9 +98,9 @@ Out (intentionally):
 
 `*.example.com` matches `sub.example.com` and `deep.sub.example.com`. It does **not** match `example.com` itself. To allow both, list both (`example.com`, `*.example.com`). Match is case-insensitive.
 
-## Hardening posture (audit-trace)
+## Hardening posture
 
-The SSRF guard, CONNECT port restriction, conn-tracking-on-Stop, and Host-header scrub were added to nanite's proxy in response to a 2026-04-10 sandbox hardening audit:
+The SSRF guard, CONNECT port restriction, conn-tracking-on-`Stop`, and `Host`-header scrub each address a concrete attack the proxy must close. Each fix is pinned by a regression test (listed below).
 
 - **DNS-based SSRF.** A resolver returning `169.254.169.254` for an allowlisted hostname could exfiltrate cloud instance metadata. Fix: validate every IP from the resolver against the deny set, fail closed if any private IP is in the result, pin the dial to the validated IP.
 - **CONNECT to non-TLS ports.** `CONNECT allowed.example.com:22` tunneled raw SSH out of the sandbox. Fix: built-in port allowlist `{443, 8443}`; `ExtraCONNECTPorts` is opt-in.
@@ -131,12 +135,11 @@ go-egress-proxy/
         └── main.go
 ```
 
-## Lineage
+## Contributing
 
-- **Public API surface** — bespoke (`Config` struct + `EnvVars()` helper), shaped to compose with `go-sandbox` cleanly. Field names track nanite's where possible (`AllowedDomains`, `AllowLocalhost`, `ExtraCONNECTPorts`, `Resolver`, `Dialer`).
-- **SSRF guard, CONNECT port allowlist, conn tracking, Host scrub, deadline-bounded tunnels** — `nanite/internal/sandbox/proxy.go` (~570 LOC).
-- **Wildcard match semantics + plain-HTTP forward shape** — cross-referenced against `clockwork-manifold/internal/sandbox/proxy.go` (~210 LOC) staged in `agent-workspaces/inbox/go-egress-proxy/`.
-- **Tracked-goroutine coordinator** — stripped-down stdlib equivalent of `nanite/internal/lifecycle.Manager` + `nanite/internal/safego.Go`. The original pulls in OTel; this lib is stdlib-only and ships no observability hard dep.
+Issues and PRs welcome. Please run `go test -race ./...` before opening a
+PR; the regression tests pinned in [Hardening posture](#hardening-posture)
+must stay green.
 
 ## License
 

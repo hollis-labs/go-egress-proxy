@@ -1,0 +1,31 @@
+# Binaries / build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Coverage
+coverage.txt
+coverage.html
+
+# Local agent / AI scratch (must never appear in published source)
+.agentrc/
+agentrc.yaml
+agentrc.yml
+.claude/
+CLAUDE.md
+AGENTS.md
+AUDIT_RESULTS.md

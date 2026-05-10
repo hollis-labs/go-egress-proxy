@@ -12,9 +12,8 @@ import (
 // shutdown drains with a bounded window, and an active-count for tests
 // that assert no tunnel leaked.
 //
-// The internal/lifecycle + internal/safego packages in nanite played this
-// role originally; this is a stripped-down stdlib equivalent so this lib
-// has zero third-party deps. Panics are not silently swallowed — tunnel
+// This is a stdlib-only goroutine coordinator so the package has zero
+// third-party dependencies. Panics are not silently swallowed — tunnel
 // goroutines do not run user code, only stdlib io.Copy, so the cost of
 // adding a recover wrapper outweighs the benefit.
 type tunnels struct {
