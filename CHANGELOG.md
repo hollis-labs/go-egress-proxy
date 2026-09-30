@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the project is pre-1.0, the public API may change between minor
 versions; breaking changes are called out in the relevant entry.
 
-## Unreleased
+## v0.2.1 — 2026-09-29
 
 ### Security
 
