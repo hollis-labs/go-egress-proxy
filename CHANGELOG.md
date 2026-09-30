@@ -23,6 +23,20 @@ versions; breaking changes are called out in the relevant entry.
 - Runnable `Example*` functions and a README section for standalone use.
 - Fuzz targets `FuzzResolveAndPin` and `FuzzGuardDialContext`.
 
+### Security
+
+- **NAT64-synthesized addresses are now denied.** The deny set gains
+  `64:ff9b::/96` (NAT64 well-known prefix, RFC 6052) and `64:ff9b:1::/48`
+  (NAT64 local-use prefix, RFC 8215). Neither is unwrapped by
+  `net.IP.To4`, so a DNS64 answer such as `64:ff9b::a9fe:a9fe` (which embeds
+  the cloud metadata address 169.254.169.254) matched no existing CIDR and
+  was accepted. This is a deny-set change and applies to `Proxy` and `Guard`
+  alike. Consequence: hosts reachable only through a NAT64 gateway
+  (IPv6-only networks with DNS64) are now refused. Pinned by
+  `TestResolveAndPin_BlocksNAT64SynthesizedIMDS` and friends. Nanite's own
+  `internal/ssrf` copy has the same gap and is tracked separately
+  (Torque CW-20260930-0027); this repository's change does not touch it.
+
 ## v0.1.0 — 2026-05-10
 
 Initial public release. Establishes the host-side, domain-allowlisted HTTP

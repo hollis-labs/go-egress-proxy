@@ -135,6 +135,8 @@ var builtinDeniedCIDRs = mustParseCIDRs([]string{
 	"fc00::/7",       // IPv6 ULA
 	"fe80::/10",      // IPv6 link-local
 	"::/128",         // IPv6 unspecified
+	"64:ff9b::/96",   // NAT64 well-known prefix (RFC 6052): embeds any IPv4, incl. 169.254.169.254
+	"64:ff9b:1::/48", // NAT64 local-use prefix (RFC 8215): same embedding
 })
 
 var builtinLoopbackCIDRs = mustParseCIDRs([]string{

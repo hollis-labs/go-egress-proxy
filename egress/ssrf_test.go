@@ -455,6 +455,11 @@ func TestGuard_HTTPClient_URLHostForms(t *testing.T) {
 // refBlocked is an independent (netip-based) statement of the documented
 // deny set, used as the oracle for the fuzz tests. It is intentionally not
 // derived from builtinDeniedCIDRs.
+var nat64Prefixes = []netip.Prefix{
+	netip.MustParsePrefix("64:ff9b::/96"),
+	netip.MustParsePrefix("64:ff9b:1::/48"),
+}
+
 func refBlocked(a netip.Addr, allowLocalhost bool) bool {
 	a = a.Unmap().WithZone("")
 	if a.IsUnspecified() {
@@ -465,6 +470,11 @@ func refBlocked(a netip.Addr, allowLocalhost bool) bool {
 	}
 	if a.IsLinkLocalUnicast() || a.IsPrivate() {
 		return true
+	}
+	for _, p := range nat64Prefixes {
+		if p.Contains(a) {
+			return true
+		}
 	}
 	if a.Is4() {
 		b := a.As4()
@@ -482,7 +492,7 @@ func FuzzResolveAndPin(f *testing.F) {
 	for _, s := range []string{
 		"169.254.169.254", "127.0.0.1", "::1", "::", "0.0.0.0", "10.1.1.1", "172.16.0.1", "192.168.0.1",
 		"100.64.0.1", "fd00::1", "fe80::1", "::ffff:169.254.169.254", "::ffff:a9fe:a9fe", "203.0.113.10",
-		"2001:db8::1", "fe80::1%eth0", "", "not-an-ip", "0:0:0:0:0:ffff:a9fe:a9fe", "256.1.1.1",
+		"2001:db8::1", "fe80::1%eth0", "64:ff9b::a9fe:a9fe", "64:ff9b:1::a9fe:a9fe", "", "not-an-ip", "0:0:0:0:0:ffff:a9fe:a9fe", "256.1.1.1",
 	} {
 		f.Add(s, false)
 		f.Add(s, true)
@@ -515,7 +525,7 @@ func FuzzGuardDialContext(f *testing.F) {
 	for _, s := range []string{
 		"169.254.169.254:80", "[::1]:80", "[::ffff:169.254.169.254]:443", "localhost:80", "example.com:80",
 		"[fe80::1%en0]:80", "10.0.0.1:1", "2852039166:80", "0251.0376.0251.0376:80", "169.254.169.254.:80",
-		"a@169.254.169.254:80", "[::ffff:a9fe:a9fe]:80", "", ":", "[::", "127.1:80",
+		"a@169.254.169.254:80", "[::ffff:a9fe:a9fe]:80", "[64:ff9b::a9fe:a9fe]:80", "[64:ff9b::169.254.169.254]:80", "", ":", "[::", "127.1:80",
 	} {
 		f.Add(s)
 	}

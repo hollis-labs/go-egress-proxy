@@ -43,7 +43,8 @@ cannot rebind between check and dial. `TestProxy_CONNECT_PinsValidatedIP` and
 hostname resolving to both an allowed and a denied IP fails closed.
 
 The deny set covers link-local including cloud IMDS (169.254/16), RFC1918,
-CGNAT, IPv6 ULA and link-local, and unspecified. `TestProxy_CONNECT_BlocksIMDS`
+CGNAT, IPv6 ULA and link-local, NAT64 (which embeds any IPv4), and
+unspecified. `TestProxy_CONNECT_BlocksIMDS`
 and `TestProxy_HTTP_BlocksRFC1918` are the ones to keep green.
 
 Loopback is denied unless `AllowLocalhost` is set, and it is off by default —

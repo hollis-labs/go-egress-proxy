@@ -115,7 +115,7 @@ In:
 - `Config{AllowedDomains, AllowLocalhost, ExtraCONNECTPorts, CONNECTDeadline, DialTimeout, HTTPClientTimeout, StopDrainWindow, Resolver, Dialer, OnDeny, Logger, ListenAddr}`
 - `New(cfg) *Proxy`, `(*Proxy).Start() error`, `(*Proxy).Addr() string`, `(*Proxy).Stop() error`, `(*Proxy).EnvVars() map[string]string`
 - Domain allowlist with exact + wildcard semantics (see "Wildcard semantics" below)
-- SSRF deny set: link-local incl. cloud IMDS (169.254/16), RFC1918, CGNAT, IPv6 ULA / link-local, unspecified — applied to every resolved IP before any dial
+- SSRF deny set: link-local incl. cloud IMDS (169.254/16), RFC1918, CGNAT, IPv6 ULA / link-local, NAT64 (`64:ff9b::/96`, `64:ff9b:1::/48`), unspecified — applied to every resolved IP before any dial
 - DNS-rebinding defense: validate every IP from the resolver, then dial the IP literal so DNS cannot rebind between check and dial
 - `AllowLocalhost` flag for callers that legitimately need to reach loopback services; off by default
 - CONNECT restricted to TLS ports (443, 8443) by default; `ExtraCONNECTPorts` extends for tests
@@ -164,6 +164,8 @@ The standalone guard (`Guard`, `ResolveAndPin`) is pinned by:
 - `TestResolveAndPin_RejectsDeniedRanges`
 - `TestResolveAndPin_LocalhostOptInDoesNotOpenOtherRanges`
 - `TestResolveAndPin_BlocksIPv4MappedIMDS`
+- `TestResolveAndPin_BlocksNAT64SynthesizedIMDS`
+- `TestGuard_DialContext_BlocksNAT64SynthesizedIMDS`
 - `TestGuard_DialContext_BlocksIMDS`
 - `TestGuard_DialContext_PinsValidatedIP`
 - `TestGuard_DialContext_FailsClosedOnMixedIPs`
