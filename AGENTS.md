@@ -12,8 +12,11 @@ confinement, no traffic inspection.
 - `README.md`'s "What this library is — and isn't" is the scope statement, and
   documents the wildcard semantics.
 - `egress/doc.go` states the threat model.
-- `egress/proxy.go` owns `Config`, `Start`/`Stop`, the allowlist and the SSRF
-  guard; `builtinDeniedCIDRs` is the deny set.
+- `egress/proxy.go` owns `Config`, `Start`/`Stop`, the allowlist and
+  `builtinDeniedCIDRs`, the deny set.
+- `egress/ssrf.go` owns the SSRF guard itself: `ResolveAndPin`, `Guard`,
+  `DefaultResolver`, `IsLocalhostName`. `(*Proxy).resolveAndPin` only
+  delegates to it; there is one copy of the policy.
 - `egress/tunnels.go` owns CONNECT tunnels and the shutdown drain.
 - `examples/sandbox_integration/main.go` shows the `go-sandbox` call site.
 

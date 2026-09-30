@@ -66,11 +66,51 @@ func main() {
 
 A complete working example (with the go-sandbox call site stubbed for cheap CI compilation) lives in `examples/sandbox_integration`.
 
+## Using the SSRF guard without a proxy
+
+If you make your own outbound requests and just want SSRF-safe dialing, skip the `Proxy` and put a `Guard` on your `http.Transport`:
+
+```go
+package main
+
+import (
+    "context"
+    "errors"
+    "fmt"
+    "net/http"
+
+    "github.com/hollis-labs/go-egress-proxy/egress"
+)
+
+func main() {
+    g := &egress.Guard{} // zero value: system resolver, 10s dial timeout, loopback denied
+    client := &http.Client{Transport: &http.Transport{DialContext: g.DialContext}}
+
+    _, err := client.Get("http://169.254.169.254/latest/meta-data/")
+    fmt.Println(errors.Is(err, egress.ErrSSRFBlocked)) // true
+
+    // Lower level: validate, then dial the returned literal yourself.
+    ip, err := egress.ResolveAndPin(context.Background(), nil, "example.com", false)
+    _ = ip // dial net.JoinHostPort(ip.String(), port), never "example.com" again
+    _ = err
+}
+```
+
+Rules that keep it safe:
+
+- Dial the IP that `ResolveAndPin` returns. Calling it as a pre-flight check and then dialing the hostname elsewhere reopens the DNS-rebinding window, which is why there is deliberately no check-only `IsSafe(url)` helper.
+- Redirects are re-validated because `http.Client` sends the redirected request through the same `Transport`. Do not build a second `Transport` or call `net.Dial` from a `CheckRedirect` handler.
+- Leave `Transport.Proxy` nil. With a proxy configured, `DialContext` dials the proxy and the origin is never checked. A `Transport` with `DialTLSContext` set also bypasses `DialContext` for HTTPS.
+- `AllowLocalhost` opens loopback only, never RFC1918 or the rest of the deny set.
+
 ## What this library is — and isn't
 
 **This is a lib, not a framework.**
 
 In:
+
+- `Guard{Resolver, Dialer, AllowLocalhost, DialTimeout}` and `(*Guard).DialContext` — the SSRF guard as a drop-in `http.Transport.DialContext`, with no `Proxy`
+- `ResolveAndPin(ctx, resolver, host, allowLocalhost) (net.IP, error)`, `DefaultResolver`, `IsLocalhostName` — the validate-then-pin primitives `Proxy` itself is built on
 
 - `Config{AllowedDomains, AllowLocalhost, ExtraCONNECTPorts, CONNECTDeadline, DialTimeout, HTTPClientTimeout, StopDrainWindow, Resolver, Dialer, OnDeny, Logger, ListenAddr}`
 - `New(cfg) *Proxy`, `(*Proxy).Start() error`, `(*Proxy).Addr() string`, `(*Proxy).Stop() error`, `(*Proxy).EnvVars() map[string]string`
@@ -118,6 +158,19 @@ These regressions are pinned by tests:
 - `TestProxy_HTTP_HostHeaderNotForwarded`
 - `TestProxy_Stop_DrainsStalledCONNECT`
 
+The standalone guard (`Guard`, `ResolveAndPin`) is pinned by:
+
+- `TestResolveAndPin_RejectsAnyDeniedDNSAnswer`
+- `TestResolveAndPin_RejectsDeniedRanges`
+- `TestResolveAndPin_LocalhostOptInDoesNotOpenOtherRanges`
+- `TestResolveAndPin_BlocksIPv4MappedIMDS`
+- `TestGuard_DialContext_BlocksIMDS`
+- `TestGuard_DialContext_PinsValidatedIP`
+- `TestGuard_DialContext_FailsClosedOnMixedIPs`
+- `TestGuard_DialContext_AllowLocalhostDoesNotOpenRFC1918`
+- `TestGuard_HTTPClient_RevalidatesRedirects`
+- `FuzzResolveAndPin`, `FuzzGuardDialContext`
+
 ## Repository layout
 
 ```
@@ -127,9 +180,12 @@ go-egress-proxy/
 ├── README.md
 ├── egress/                            # main package
 │   ├── doc.go
-│   ├── proxy.go                       # Proxy, Config, handlers, SSRF guard
+│   ├── proxy.go                       # Proxy, Config, handlers, deny-set data
+│   ├── ssrf.go                        # Guard, ResolveAndPin: standalone SSRF guard
 │   ├── tunnels.go                     # tracked-goroutine coordinator (stdlib)
-│   └── proxy_test.go                  # full feature + regression suite
+│   ├── proxy_test.go                  # full feature + regression suite
+│   ├── ssrf_test.go                   # standalone guard suite + fuzz targets
+│   └── example_test.go                # runnable examples
 └── examples/
     └── sandbox_integration/           # env-var injection into a sandboxed *exec.Cmd
         └── main.go

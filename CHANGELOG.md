@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the project is pre-1.0, the public API may change between minor
 versions; breaking changes are called out in the relevant entry.
 
+## Unreleased
+
+### Added
+
+- `egress.Guard` and `(*Guard).DialContext` — the SSRF guard as a drop-in
+  `http.Transport.DialContext` for callers that make their own outbound
+  requests and do not want a `Proxy`. Zero value is ready to use.
+- `egress.ResolveAndPin(ctx, resolver, host, allowLocalhost) (net.IP, error)` —
+  the validate-then-pin primitive, promoted from the unexported
+  `(*Proxy).resolveAndPin`. `Proxy` now delegates to it, so there is a
+  single copy of the policy; proxy behavior is unchanged.
+- `egress.DefaultResolver` and `egress.IsLocalhostName` — the previously
+  anonymous/unexported default resolver and RFC 6761 localhost matcher.
+- Runnable `Example*` functions and a README section for standalone use.
+- Fuzz targets `FuzzResolveAndPin` and `FuzzGuardDialContext`.
+
 ## v0.1.0 — 2026-05-10
 
 Initial public release. Establishes the host-side, domain-allowlisted HTTP
