@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the project is pre-1.0, the public API may change between minor
 versions; breaking changes are called out in the relevant entry.
 
+## v0.2.0 — 2026-09-29
+
+### Added
+
+- `egress.Guard` and `(*Guard).DialContext` — the SSRF guard as a drop-in
+  `http.Transport.DialContext` for callers that make their own outbound
+  requests and do not want a `Proxy`. Zero value is ready to use.
+- `egress.ResolveAndPin(ctx, resolver, host, allowLocalhost) (net.IP, error)` —
+  the validate-then-pin primitive, promoted from the unexported
+  `(*Proxy).resolveAndPin`. `Proxy` now delegates to it, so there is a
+  single copy of the policy; proxy behavior is unchanged.
+- `egress.DefaultResolver` and `egress.IsLocalhostName` — the previously
+  anonymous/unexported default resolver and RFC 6761 localhost matcher.
+- Runnable `Example*` functions and a README section for standalone use.
+- Fuzz targets `FuzzResolveAndPin` and `FuzzGuardDialContext`.
+
+### Security
+
+- **NAT64-synthesized addresses are now denied.** The deny set gains
+  `64:ff9b::/96` (NAT64 well-known prefix, RFC 6052) and `64:ff9b:1::/48`
+  (NAT64 local-use prefix, RFC 8215). Neither is unwrapped by
+  `net.IP.To4`, so a DNS64 answer such as `64:ff9b::a9fe:a9fe` (which embeds
+  the cloud metadata address 169.254.169.254) matched no existing CIDR and
+  was accepted. This is a deny-set change and applies to `Proxy` and `Guard`
+  alike. Consequence: hosts reachable only through a NAT64 gateway
+  (IPv6-only networks with DNS64) are now refused. Pinned by
+  `TestResolveAndPin_BlocksNAT64SynthesizedIMDS` and friends. Nanite's own
+  `internal/ssrf` copy has the same gap and is tracked separately
+  (Torque CW-20260930-0027); this repository's change does not touch it.
+
 ## v0.1.0 — 2026-05-10
 
 Initial public release. Establishes the host-side, domain-allowlisted HTTP

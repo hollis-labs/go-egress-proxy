@@ -12,8 +12,11 @@ confinement, no traffic inspection.
 - `README.md`'s "What this library is — and isn't" is the scope statement, and
   documents the wildcard semantics.
 - `egress/doc.go` states the threat model.
-- `egress/proxy.go` owns `Config`, `Start`/`Stop`, the allowlist and the SSRF
-  guard; `builtinDeniedCIDRs` is the deny set.
+- `egress/proxy.go` owns `Config`, `Start`/`Stop`, the allowlist and
+  `builtinDeniedCIDRs`, the deny set.
+- `egress/ssrf.go` owns the SSRF guard itself: `ResolveAndPin`, `Guard`,
+  `DefaultResolver`, `IsLocalhostName`. `(*Proxy).resolveAndPin` only
+  delegates to it; there is one copy of the policy.
 - `egress/tunnels.go` owns CONNECT tunnels and the shutdown drain.
 - `examples/sandbox_integration/main.go` shows the `go-sandbox` call site.
 
@@ -40,7 +43,8 @@ cannot rebind between check and dial. `TestProxy_CONNECT_PinsValidatedIP` and
 hostname resolving to both an allowed and a denied IP fails closed.
 
 The deny set covers link-local including cloud IMDS (169.254/16), RFC1918,
-CGNAT, IPv6 ULA and link-local, and unspecified. `TestProxy_CONNECT_BlocksIMDS`
+CGNAT, IPv6 ULA and link-local, NAT64 (which embeds any IPv4), and
+unspecified. `TestProxy_CONNECT_BlocksIMDS`
 and `TestProxy_HTTP_BlocksRFC1918` are the ones to keep green.
 
 Loopback is denied unless `AllowLocalhost` is set, and it is off by default —

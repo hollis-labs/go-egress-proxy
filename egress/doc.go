@@ -17,5 +17,11 @@
 // network access — it can only reach hosts via the proxy, which enforces
 // the policy.
 //
+// The same SSRF guard is also exported on its own for callers that make
+// their own outbound requests and do not want a proxy: Guard.DialContext
+// plugs into an http.Transport, and ResolveAndPin is the underlying
+// validate-then-pin primitive. Both dial the validated IP literal, never
+// the hostname, so a DNS answer cannot change between check and dial.
+//
 // This package has no third-party dependencies.
 package egress

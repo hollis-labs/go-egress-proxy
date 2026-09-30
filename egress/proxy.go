@@ -94,8 +94,6 @@ type Proxy struct {
 	cfg Config
 
 	allowedDomains []string
-	deniedCIDRs    []*net.IPNet
-	loopbackCIDRs  []*net.IPNet
 	allowedPorts   map[string]struct{}
 
 	listener net.Listener
@@ -137,6 +135,8 @@ var builtinDeniedCIDRs = mustParseCIDRs([]string{
 	"fc00::/7",       // IPv6 ULA
 	"fe80::/10",      // IPv6 link-local
 	"::/128",         // IPv6 unspecified
+	"64:ff9b::/96",   // NAT64 well-known prefix (RFC 6052): embeds any IPv4, incl. 169.254.169.254
+	"64:ff9b:1::/48", // NAT64 local-use prefix (RFC 8215): same embedding
 })
 
 var builtinLoopbackCIDRs = mustParseCIDRs([]string{
@@ -173,8 +173,6 @@ func New(cfg Config) *Proxy {
 	return &Proxy{
 		cfg:            cfg,
 		allowedDomains: append([]string(nil), cfg.AllowedDomains...),
-		deniedCIDRs:    builtinDeniedCIDRs,
-		loopbackCIDRs:  builtinLoopbackCIDRs,
 		allowedPorts:   allowed,
 		conns:          make(map[net.Conn]struct{}),
 	}
@@ -321,45 +319,11 @@ func (p *Proxy) connectPortAllowed(port string) bool {
 	return ok
 }
 
-// resolveAndPin resolves host, rejects every returned IP that falls in
-// the SSRF deny set (and loopback unless AllowLocalhost), and returns the
-// first validated IP. The caller dials the IP literal so DNS cannot rebind
-// between validation and dial.
+// resolveAndPin delegates to the package-level ResolveAndPin with this
+// proxy's Resolver and AllowLocalhost setting. The caller dials the returned
+// IP literal so DNS cannot rebind between validation and dial.
 func (p *Proxy) resolveAndPin(ctx context.Context, host string) (net.IP, error) {
-	if isLocalhostName(host) && !p.cfg.AllowLocalhost {
-		return nil, fmt.Errorf("%w: localhost name %q", ErrSSRFBlocked, host)
-	}
-	resolver := p.cfg.Resolver
-	if resolver == nil {
-		resolver = func(ctx context.Context, host string) ([]net.IP, error) {
-			return net.DefaultResolver.LookupIP(ctx, "ip", host)
-		}
-	}
-	ips, err := resolver(ctx, host)
-	if err != nil {
-		return nil, err
-	}
-	if len(ips) == 0 {
-		return nil, fmt.Errorf("%w: no IPs for %q", ErrSSRFBlocked, host)
-	}
-	for _, ip := range ips {
-		if !p.cfg.AllowLocalhost {
-			for _, block := range p.loopbackCIDRs {
-				if block.Contains(ip) {
-					return nil, fmt.Errorf("%w: loopback %s", ErrSSRFBlocked, ip)
-				}
-			}
-		}
-		for _, block := range p.deniedCIDRs {
-			if block.Contains(ip) {
-				return nil, fmt.Errorf("%w: %s in %s", ErrSSRFBlocked, ip, block)
-			}
-		}
-		if ip.IsUnspecified() {
-			return nil, fmt.Errorf("%w: unspecified %s", ErrSSRFBlocked, ip)
-		}
-	}
-	return ips[0], nil
+	return ResolveAndPin(ctx, p.cfg.Resolver, host, p.cfg.AllowLocalhost)
 }
 
 func (p *Proxy) innerDial(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -372,13 +336,6 @@ func (p *Proxy) innerDial(ctx context.Context, network, addr string) (net.Conn, 
 	}
 	d := &net.Dialer{Timeout: timeout}
 	return d.DialContext(ctx, network, addr)
-}
-
-// isLocalhostName matches "localhost" and any subdomain of ".localhost"
-// (RFC 6761). Case-insensitive.
-func isLocalhostName(host string) bool {
-	h := strings.ToLower(strings.TrimSuffix(host, "."))
-	return h == "localhost" || strings.HasSuffix(h, ".localhost")
 }
 
 // splitHostPort splits a host:port string. If no port is present, returns
