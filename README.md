@@ -102,6 +102,8 @@ Rules that keep it safe:
 - Redirects are re-validated because `http.Client` sends the redirected request through the same `Transport`. Do not build a second `Transport` or call `net.Dial` from a `CheckRedirect` handler.
 - Leave `Transport.Proxy` nil. With a proxy configured, `DialContext` dials the proxy and the origin is never checked. A `Transport` with `DialTLSContext` set also bypasses `DialContext` for HTTPS.
 - `AllowLocalhost` opens loopback only, never RFC1918 or the rest of the deny set.
+- A resolver answer with a nil or wrong-length `net.IP` is refused whole (`ErrSSRFBlocked`), like a denied address.
+- NAT64 prefixes are denied wholesale; checking the embedded IPv4 instead is a possible future option if a real NAT64 consumer needs it. 6to4, Teredo and IPv4-compatible embedding are a known gap (follow-up CW-20260930-0028).
 
 ## What this library is — and isn't
 
@@ -164,6 +166,8 @@ The standalone guard (`Guard`, `ResolveAndPin`) is pinned by:
 - `TestResolveAndPin_RejectsDeniedRanges`
 - `TestResolveAndPin_LocalhostOptInDoesNotOpenOtherRanges`
 - `TestResolveAndPin_BlocksIPv4MappedIMDS`
+- `TestResolveAndPin_MalformedIPFailsClosed`
+- `TestGuard_DialContext_MalformedIPNeverDials`
 - `TestResolveAndPin_BlocksNAT64SynthesizedIMDS`
 - `TestGuard_DialContext_BlocksNAT64SynthesizedIMDS`
 - `TestGuard_DialContext_BlocksIMDS`
@@ -171,7 +175,7 @@ The standalone guard (`Guard`, `ResolveAndPin`) is pinned by:
 - `TestGuard_DialContext_FailsClosedOnMixedIPs`
 - `TestGuard_DialContext_AllowLocalhostDoesNotOpenRFC1918`
 - `TestGuard_HTTPClient_RevalidatesRedirects`
-- `FuzzResolveAndPin`, `FuzzGuardDialContext`
+- `FuzzResolveAndPin`, `FuzzGuardDialContext`, `FuzzGuardMalformedIP`
 
 ## Repository layout
 

@@ -46,6 +46,10 @@ func IsLocalhostName(host string) bool {
 // package deliberately offers no check-only "is this URL safe" helper. Most
 // callers should use Guard, which does the pinning for them.
 //
+// An answer that contains a nil net.IP, or one whose length is not 4 or 16
+// bytes, is rejected whole with ErrSSRFBlocked, like a denied address: the
+// result is either a valid, checked address or an error.
+//
 // host must be a bare host, without port or brackets. The deny set is
 // applied to the addresses the resolver returns (IPv4-mapped IPv6 forms are
 // compared as their IPv4 value); see DefaultResolver for how encoded
@@ -63,6 +67,14 @@ func ResolveAndPin(ctx context.Context, resolver Resolver, host string, allowLoc
 	}
 	if len(ips) == 0 {
 		return nil, fmt.Errorf("%w: no IPs for %q", ErrSSRFBlocked, host)
+	}
+	// A nil or wrong-length net.IP cannot be range-checked and would dial as
+	// the string "<nil>" or similar. Reject the whole answer, as for a
+	// denied address, before any other check.
+	for _, ip := range ips {
+		if len(ip) != net.IPv4len && len(ip) != net.IPv6len {
+			return nil, fmt.Errorf("%w: malformed IP (%d bytes) in answer for %q", ErrSSRFBlocked, len(ip), host)
+		}
 	}
 	for _, ip := range ips {
 		if !allowLocalhost {

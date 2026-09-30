@@ -492,7 +492,7 @@ func FuzzResolveAndPin(f *testing.F) {
 	for _, s := range []string{
 		"169.254.169.254", "127.0.0.1", "::1", "::", "0.0.0.0", "10.1.1.1", "172.16.0.1", "192.168.0.1",
 		"100.64.0.1", "fd00::1", "fe80::1", "::ffff:169.254.169.254", "::ffff:a9fe:a9fe", "203.0.113.10",
-		"2001:db8::1", "fe80::1%eth0", "64:ff9b::a9fe:a9fe", "64:ff9b:1::a9fe:a9fe", "", "not-an-ip", "0:0:0:0:0:ffff:a9fe:a9fe", "256.1.1.1",
+		"2001:db8::1", "fe80::1%eth0", "a", "abc", "abcde", "abcdefghijklmno", "64:ff9b::a9fe:a9fe", "64:ff9b:1::a9fe:a9fe", "", "not-an-ip", "0:0:0:0:0:ffff:a9fe:a9fe", "256.1.1.1",
 	} {
 		f.Add(s, false)
 		f.Add(s, true)
@@ -502,10 +502,17 @@ func FuzzResolveAndPin(f *testing.F) {
 			if ip := net.ParseIP(s); ip != nil {
 				return []net.IP{ip}, nil
 			}
-			if len(s) == 4 || len(s) == 16 { // raw byte form
-				return []net.IP{net.IP([]byte(s))}, nil
+			// Raw byte form of any length, including empty (nil) and
+			// wrong-length slices; the answer may also carry a valid public
+			// address first.
+			var raw net.IP
+			if s != "" {
+				raw = net.IP([]byte(s))
 			}
-			return nil, errors.New("no")
+			if len(s)%2 == 0 {
+				return []net.IP{net.ParseIP("203.0.113.10"), raw}, nil
+			}
+			return []net.IP{raw}, nil
 		}
 		ip, err := ResolveAndPin(context.Background(), r, "fuzz.example", allowLocalhost)
 		if err != nil {
@@ -517,6 +524,38 @@ func FuzzResolveAndPin(f *testing.F) {
 		}
 		if refBlocked(addr, allowLocalhost) {
 			t.Fatalf("allowed blocked address %s (input %q, allowLocalhost=%v)", addr, s, allowLocalhost)
+		}
+	})
+}
+
+func FuzzGuardMalformedIP(f *testing.F) {
+	for _, b := range [][]byte{nil, {}, {1}, {1, 2, 3}, {1, 2, 3, 4, 5}, make([]byte, 15), make([]byte, 17), {169, 254, 169, 254}, make([]byte, 16)} {
+		f.Add(b)
+	}
+	f.Fuzz(func(t *testing.T, raw []byte) {
+		var dialed []string
+		g := &Guard{
+			Resolver: func(context.Context, string) ([]net.IP, error) {
+				return []net.IP{net.IP(raw)}, nil
+			},
+			Dialer: func(_ context.Context, _, target string) (net.Conn, error) {
+				dialed = append(dialed, target)
+				return nil, errors.New("stop")
+			},
+		}
+		_, _ = g.DialContext(context.Background(), "tcp", "fuzz.example:80")
+		for _, target := range dialed {
+			host, _, err := net.SplitHostPort(target)
+			a, perr := netip.ParseAddr(host)
+			if err != nil || perr != nil {
+				t.Fatalf("dialer reached with non-literal target %q (raw %v)", target, raw)
+			}
+			if len(raw) != 4 && len(raw) != 16 {
+				t.Fatalf("dialer reached for malformed IP %v: %q", raw, target)
+			}
+			if refBlocked(a, false) {
+				t.Fatalf("dialer reached with blocked address %q", target)
+			}
 		}
 	})
 }

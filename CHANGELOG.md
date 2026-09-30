@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the project is pre-1.0, the public API may change between minor
 versions; breaking changes are called out in the relevant entry.
 
+## Unreleased
+
+### Security
+
+- **`ResolveAndPin` now fails closed on a malformed resolver answer.** An
+  answer containing a nil `net.IP`, or one whose length is not 4 or 16
+  bytes, is rejected whole with an error wrapping `ErrSSRFBlocked`, like a
+  denied address, so it can never be returned or turned into a dial string
+  such as `<nil>:80`. `Guard.DialContext` and the proxy inherit this. Pinned
+  by `TestResolveAndPin_MalformedIPFailsClosed`,
+  `TestGuard_DialContext_MalformedIPNeverDials` and
+  `TestProxy_resolveAndPin_MalformedIPFailsClosed`, and by the fuzz targets.
+- Known gap, tracked as follow-up CW-20260930-0028 and not addressed here:
+  addresses that embed an IPv4 address through 6to4 (`2002::/16`), Teredo
+  (`2001::/32`) or the IPv4-compatible form (`::a.b.c.d`) are not denied.
+- Possible future refinement, not planned: the NAT64 prefixes are denied
+  wholesale. If a real NAT64/DNS64 consumer needs it, they could instead be
+  allowed after applying the deny set to the embedded IPv4 address.
+
 ## v0.2.0 — 2026-09-29
 
 ### Added
