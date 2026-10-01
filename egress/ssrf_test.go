@@ -454,14 +454,32 @@ func TestGuard_HTTPClient_URLHostForms(t *testing.T) {
 
 // refBlocked is an independent (netip-based) statement of the documented
 // deny set, used as the oracle for the fuzz tests. It is intentionally not
-// derived from builtinDeniedCIDRs.
-var nat64Prefixes = []netip.Prefix{
-	netip.MustParsePrefix("64:ff9b::/96"),
-	netip.MustParsePrefix("64:ff9b:1::/48"),
+// derived from builtinDeniedCIDRs or embeddedIPv4s.
+var refDeniedPrefixes = []netip.Prefix{
+	netip.MustParsePrefix("64:ff9b:1::/48"), // NAT64 local-use, denied whole
+	netip.MustParsePrefix("192.0.0.0/24"),
+	netip.MustParsePrefix("192.88.99.0/24"),
+	netip.MustParsePrefix("198.18.0.0/15"),
+	netip.MustParsePrefix("240.0.0.0/4"),
+	netip.MustParsePrefix("fec0::/10"),
 }
 
 func refBlocked(a netip.Addr, allowLocalhost bool) bool {
 	a = a.Unmap().WithZone("")
+	if refBlockedPlain(a, allowLocalhost) {
+		return true
+	}
+	// An IPv6 transition form is judged by the IPv4 it carries; embedded
+	// loopback is denied even with allowLocalhost.
+	for _, v4 := range refEmbeddedIPv4(a) {
+		if refBlockedPlain(v4, false) {
+			return true
+		}
+	}
+	return false
+}
+
+func refBlockedPlain(a netip.Addr, allowLocalhost bool) bool {
 	if a.IsUnspecified() {
 		return true
 	}
@@ -471,7 +489,7 @@ func refBlocked(a netip.Addr, allowLocalhost bool) bool {
 	if a.IsLinkLocalUnicast() || a.IsPrivate() {
 		return true
 	}
-	for _, p := range nat64Prefixes {
+	for _, p := range refDeniedPrefixes {
 		if p.Contains(a) {
 			return true
 		}
@@ -488,11 +506,36 @@ func refBlocked(a netip.Addr, allowLocalhost bool) bool {
 	return false
 }
 
+// refEmbeddedIPv4 reads the IPv4 an IPv6 transition form carries: NAT64
+// well-known (last 32 bits), 6to4 (bits 16-47), Teredo (server, and the
+// client XORed with 0xffffffff), IPv4-compatible (last 32 bits, but not ::
+// or ::1).
+func refEmbeddedIPv4(a netip.Addr) []netip.Addr {
+	if !a.Is6() {
+		return nil
+	}
+	b := a.As16()
+	at := func(i int) netip.Addr { return netip.AddrFrom4([4]byte{b[i], b[i+1], b[i+2], b[i+3]}) }
+	switch {
+	case netip.MustParsePrefix("64:ff9b::/96").Contains(a):
+		return []netip.Addr{at(12)}
+	case netip.MustParsePrefix("2002::/16").Contains(a):
+		return []netip.Addr{at(2)}
+	case netip.MustParsePrefix("2001::/32").Contains(a):
+		return []netip.Addr{at(4), netip.AddrFrom4([4]byte{^b[12], ^b[13], ^b[14], ^b[15]})}
+	case netip.MustParsePrefix("::/96").Contains(a) && a != netip.IPv6Unspecified() && a != netip.IPv6Loopback():
+		return []netip.Addr{at(12)}
+	}
+	return nil
+}
+
 func FuzzResolveAndPin(f *testing.F) {
 	for _, s := range []string{
 		"169.254.169.254", "127.0.0.1", "::1", "::", "0.0.0.0", "10.1.1.1", "172.16.0.1", "192.168.0.1",
 		"100.64.0.1", "fd00::1", "fe80::1", "::ffff:169.254.169.254", "::ffff:a9fe:a9fe", "203.0.113.10",
 		"2001:db8::1", "fe80::1%eth0", "a", "abc", "abcde", "abcdefghijklmno", "64:ff9b::a9fe:a9fe", "64:ff9b:1::a9fe:a9fe", "", "not-an-ip", "0:0:0:0:0:ffff:a9fe:a9fe", "256.1.1.1",
+		"64:ff9b::808:808", "2002:a9fe:a9fe::1", "2002:808:808::1", "2001:0:808:808::f5ff:fffe", "2001:0:808:808::fefe:fefe",
+		"::169.254.169.254", "::8.8.8.8", "255.255.255.255", "198.18.0.1", "192.88.99.1", "fec0::1",
 	} {
 		f.Add(s, false)
 		f.Add(s, true)

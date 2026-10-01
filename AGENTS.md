@@ -43,9 +43,17 @@ cannot rebind between check and dial. `TestProxy_CONNECT_PinsValidatedIP` and
 hostname resolving to both an allowed and a denied IP fails closed.
 
 The deny set covers link-local including cloud IMDS (169.254/16), RFC1918,
-CGNAT, IPv6 ULA and link-local, NAT64 (which embeds any IPv4), and
-unspecified. `TestProxy_CONNECT_BlocksIMDS`
+CGNAT, the special-purpose ranges (192.0.0/24, 192.88.99/24, 198.18/15,
+240/4 with 255.255.255.255), IPv6 ULA, link-local and site-local, the NAT64
+local-use prefix, and unspecified. `TestProxy_CONNECT_BlocksIMDS`
 and `TestProxy_HTTP_BlocksRFC1918` are the ones to keep green.
+
+An IPv6 transition form (NAT64 well-known, 6to4, Teredo, IPv4-compatible) is
+judged by the IPv4 it carries (`embeddedIPv4s`, ported from Nanite's
+internal/ssrf). Denying those prefixes whole would break DNS64 egress, and not
+reading them lets a denied IPv4 through. Embedded loopback is denied even
+with `AllowLocalhost` — `TestResolveAndPin_JudgesEmbeddedIPv4` and
+`TestResolveAndPin_EmbeddedLoopbackDeniedEvenWithAllowLocalhost`.
 
 Loopback is denied unless `AllowLocalhost` is set, and it is off by default —
 `TestProxy_HTTP_RejectsLocalhostByName` covers reaching it by name rather than

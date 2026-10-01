@@ -103,7 +103,7 @@ Rules that keep it safe:
 - Leave `Transport.Proxy` nil. With a proxy configured, `DialContext` dials the proxy and the origin is never checked. A `Transport` with `DialTLSContext` set also bypasses `DialContext` for HTTPS.
 - `AllowLocalhost` opens loopback only, never RFC1918 or the rest of the deny set.
 - A resolver answer with a nil or wrong-length `net.IP` is refused whole (`ErrSSRFBlocked`), like a denied address.
-- NAT64 prefixes are denied wholesale; checking the embedded IPv4 instead is a possible future option if a real NAT64 consumer needs it. 6to4, Teredo and IPv4-compatible embedding are a known gap (follow-up CW-20260930-0028).
+- An IPv6 answer that carries an IPv4 is judged by that IPv4: the NAT64 well-known prefix (`64:ff9b::/96`), 6to4 (`2002::/16`), Teredo (`2001::/32`, both the server and the XOR-obfuscated client address) and IPv4-compatible (`::/96`) forms. A denied IPv4 cannot ride an IPv6 answer past the deny set, and DNS64 egress to a public IPv4 works. Embedded loopback is denied even with `AllowLocalhost`, since a translated 127.0.0.1 is not this host. The NAT64 local-use prefix (`64:ff9b:1::/48`) is denied whole, because where its IPv4 sits depends on an operator-chosen prefix length.
 
 ## What this library is — and isn't
 
@@ -117,7 +117,7 @@ In:
 - `Config{AllowedDomains, AllowLocalhost, ExtraCONNECTPorts, CONNECTDeadline, DialTimeout, HTTPClientTimeout, StopDrainWindow, Resolver, Dialer, OnDeny, Logger, ListenAddr}`
 - `New(cfg) *Proxy`, `(*Proxy).Start() error`, `(*Proxy).Addr() string`, `(*Proxy).Stop() error`, `(*Proxy).EnvVars() map[string]string`
 - Domain allowlist with exact + wildcard semantics (see "Wildcard semantics" below)
-- SSRF deny set: link-local incl. cloud IMDS (169.254/16), RFC1918, CGNAT, IPv6 ULA / link-local, NAT64 (`64:ff9b::/96`, `64:ff9b:1::/48`), unspecified — applied to every resolved IP before any dial
+- SSRF deny set: link-local incl. cloud IMDS (169.254/16), RFC1918, CGNAT, IETF protocol assignments (192.0.0/24), 6to4 relay anycast (192.88.99/24), benchmarking (198.18/15), reserved 240/4 incl. 255.255.255.255, IPv6 ULA / link-local / site-local (fec0::/10), NAT64 local-use (`64:ff9b:1::/48`), unspecified, plus the IPv4 embedded in NAT64 well-known, 6to4, Teredo and IPv4-compatible addresses — applied to every resolved IP before any dial
 - DNS-rebinding defense: validate every IP from the resolver, then dial the IP literal so DNS cannot rebind between check and dial
 - `AllowLocalhost` flag for callers that legitimately need to reach loopback services; off by default
 - CONNECT restricted to TLS ports (443, 8443) by default; `ExtraCONNECTPorts` extends for tests
@@ -170,6 +170,9 @@ The standalone guard (`Guard`, `ResolveAndPin`) is pinned by:
 - `TestGuard_DialContext_MalformedIPNeverDials`
 - `TestResolveAndPin_BlocksNAT64SynthesizedIMDS`
 - `TestGuard_DialContext_BlocksNAT64SynthesizedIMDS`
+- `TestResolveAndPin_JudgesEmbeddedIPv4`
+- `TestResolveAndPin_EmbeddedLoopbackDeniedEvenWithAllowLocalhost`
+- `TestResolveAndPin_SpecialPurposeRanges`
 - `TestGuard_DialContext_BlocksIMDS`
 - `TestGuard_DialContext_PinsValidatedIP`
 - `TestGuard_DialContext_FailsClosedOnMixedIPs`
