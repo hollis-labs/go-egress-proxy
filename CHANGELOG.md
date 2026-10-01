@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the project is pre-1.0, the public API may change between minor
 versions; breaking changes are called out in the relevant entry.
 
+## v0.2.3 — 2026-10-01
+
+### Fixed
+
+- **`Proxy.Stop` waits for every CONNECT tunnel it lets start**
+  (CW-20260930-0031).
+  - **Gap:** the tunnel tracker checked its closed flag and then called
+    `WaitGroup.Add` with nothing ordering the two against `Stop`'s `Wait`.
+  - **Effect:** a CONNECT arriving as Stop began could `Add` while `Wait`
+    was already running on a zero counter. That is the documented
+    WaitGroup misuse `-race` reported intermittently. Stop could then
+    return while that tunnel was still running.
+  - **Fix:** a mutex now orders the check and `Add` against shutdown, so
+    a tunnel either registers before Stop waits, and is drained, or is
+    refused.
+- **A CONNECT refused that way no longer hangs.** `runTunnel` waited for
+  copy goroutines that were never started, leaking the handler goroutine
+  and keeping both connections open until the client gave up. It now
+  returns and closes them.
+- Pinned by `TestTunnelsGoRacingShutdown`,
+  `TestTunnelsGoAfterShutdownIsRefused` and
+  `TestRunTunnelReturnsWhenTunnelsAreShutDown`. Before the fix, the first
+  reported a DATA RACE and the third hung.
+
 ## v0.2.2 — 2026-10-01
 
 ### Security

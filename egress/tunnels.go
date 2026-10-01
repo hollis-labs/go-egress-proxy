@@ -21,7 +21,14 @@ type tunnels struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 	active atomic.Int64
-	closed atomic.Bool
+
+	// mu orders go_'s closed check and wg.Add against shutdown setting
+	// closed, so every Add happens before shutdown's Wait or is refused.
+	// Without it an Add could land while Wait was already running on a zero
+	// counter (CW-20260930-0031): a documented WaitGroup misuse, and a
+	// tunnel shutdown never waited for.
+	mu     sync.Mutex
+	closed bool
 }
 
 func newTunnels() *tunnels {
@@ -29,27 +36,33 @@ func newTunnels() *tunnels {
 	return &tunnels{ctx: ctx, cancel: cancel}
 }
 
-// go_ spawns fn as a tracked goroutine. fn receives the tunnels' context,
-// which is cancelled on shutdown. If shutdown has already been called,
-// go_ returns without spawning. The trailing underscore avoids shadowing
-// the Go keyword.
-func (t *tunnels) go_(_ string, fn func(ctx context.Context)) {
-	if t.closed.Load() {
-		return
+// go_ spawns fn as a tracked goroutine and reports whether it did. fn
+// receives the tunnels' context, which is cancelled on shutdown. Once
+// shutdown has been called, go_ spawns nothing and returns false. The
+// trailing underscore avoids shadowing the Go keyword.
+func (t *tunnels) go_(_ string, fn func(ctx context.Context)) bool {
+	t.mu.Lock()
+	if t.closed {
+		t.mu.Unlock()
+		return false
 	}
 	t.wg.Add(1)
 	t.active.Add(1)
+	t.mu.Unlock()
 	go func() {
 		defer t.wg.Done()
 		defer t.active.Add(-1)
 		fn(t.ctx)
 	}()
+	return true
 }
 
 // shutdown cancels the tunnels' context and waits up to maxWait for all
 // tracked goroutines to exit. Safe to call multiple times.
 func (t *tunnels) shutdown(maxWait time.Duration) {
-	t.closed.Store(true)
+	t.mu.Lock()
+	t.closed = true
+	t.mu.Unlock()
 	t.cancel()
 	done := make(chan struct{})
 	go func() {

@@ -115,6 +115,10 @@ type Proxy struct {
 // rejections from transport errors.
 var ErrSSRFBlocked = errors.New("egress: blocked destination")
 
+// errProxyStopping stands in for a tunnel copy that was never started
+// because Stop had already begun.
+var errProxyStopping = errors.New("egress: proxy stopping")
+
 const (
 	defaultCONNECTDeadline   = 5 * time.Minute
 	defaultDialTimeout       = 10 * time.Second
@@ -474,7 +478,7 @@ func (p *Proxy) runTunnel(client, target net.Conn) {
 
 	errCh := make(chan error, 2)
 	copyOne := func(label string, dst, src net.Conn) {
-		p.tunnels.go_(label, func(ctx context.Context) {
+		spawned := p.tunnels.go_(label, func(ctx context.Context) {
 			done := make(chan struct{})
 			defer close(done)
 			go func() {
@@ -488,6 +492,11 @@ func (p *Proxy) runTunnel(client, target net.Conn) {
 			_, err := io.Copy(dst, src)
 			errCh <- err
 		})
+		if !spawned {
+			// Stop has begun: no copy runs, so stand in for its result
+			// rather than wait below for one that never comes.
+			errCh <- errProxyStopping
+		}
 	}
 	copyOne("connect.copy-to-target", target, client)
 	copyOne("connect.copy-to-client", client, target)
