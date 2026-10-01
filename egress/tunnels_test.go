@@ -8,11 +8,11 @@ import (
 	"time"
 )
 
-// CW-20260930-0031: go_ racing shutdown. Every tunnel goroutine either
+// CW-20260930-0031: spawn racing shutdown. Every tunnel goroutine either
 // registers before shutdown starts waiting, and is drained by it, or is
 // refused. None may start after shutdown has returned, and none may still
 // be running when shutdown returns before its drain window.
-func TestTunnelsGoRacingShutdown(t *testing.T) {
+func TestTunnelsSpawnRacingShutdown(t *testing.T) {
 	for i := 0; i < 500; i++ {
 		tn := newTunnels()
 		start := make(chan struct{})
@@ -22,7 +22,7 @@ func TestTunnelsGoRacingShutdown(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			spawned = tn.go_("test", func(ctx context.Context) { <-ctx.Done() })
+			spawned = tn.spawn("test", func(ctx context.Context) { <-ctx.Done() })
 		}()
 		go func() {
 			defer wg.Done()
@@ -37,16 +37,16 @@ func TestTunnelsGoRacingShutdown(t *testing.T) {
 	}
 }
 
-func TestTunnelsGoAfterShutdownIsRefused(t *testing.T) {
+func TestTunnelsSpawnAfterShutdownIsRefused(t *testing.T) {
 	tn := newTunnels()
 	tn.shutdown(time.Second)
 	ran := make(chan struct{}, 1)
-	if tn.go_("test", func(context.Context) { ran <- struct{}{} }) {
-		t.Fatal("go_ after shutdown reported a spawned goroutine")
+	if tn.spawn("test", func(context.Context) { ran <- struct{}{} }) {
+		t.Fatal("spawn after shutdown reported a spawned goroutine")
 	}
 	select {
 	case <-ran:
-		t.Fatal("go_ after shutdown ran its function")
+		t.Fatal("spawn after shutdown ran its function")
 	case <-time.After(50 * time.Millisecond):
 	}
 }

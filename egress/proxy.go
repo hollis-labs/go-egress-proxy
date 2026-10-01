@@ -110,9 +110,9 @@ type Proxy struct {
 	stopped atomic.Bool
 }
 
-// Sentinel returned wrapped (via fmt.Errorf %w) when the SSRF guard
-// rejects a destination. errors.Is callers can distinguish guard
-// rejections from transport errors.
+// ErrSSRFBlocked is the sentinel returned wrapped (via fmt.Errorf %w) when
+// the SSRF guard rejects a destination. errors.Is callers can distinguish
+// guard rejections from transport errors.
 var ErrSSRFBlocked = errors.New("egress: blocked destination")
 
 // errProxyStopping stands in for a tunnel copy that was never started
@@ -124,6 +124,12 @@ const (
 	defaultDialTimeout       = 10 * time.Second
 	defaultHTTPClientTimeout = 60 * time.Second
 	defaultStopDrainWindow   = 5 * time.Second
+	// defaultReadHeaderTimeout bounds how long a client may take to send a
+	// request's headers, so a client that opens connections and trickles
+	// bytes cannot hold them open indefinitely (gosec G112, Slowloris). It
+	// does not limit a CONNECT tunnel, which is hijacked once its headers
+	// are read.
+	defaultReadHeaderTimeout = 30 * time.Second
 )
 
 // builtinDeniedCIDRs is the SSRF deny set every Proxy enforces.
@@ -221,7 +227,8 @@ func (p *Proxy) Start() error {
 	p.tunnels = newTunnels()
 
 	p.server = &http.Server{
-		Handler: http.HandlerFunc(p.handle),
+		Handler:           http.HandlerFunc(p.handle),
+		ReadHeaderTimeout: defaultReadHeaderTimeout,
 	}
 
 	p.wg.Add(1)
@@ -478,7 +485,7 @@ func (p *Proxy) runTunnel(client, target net.Conn) {
 
 	errCh := make(chan error, 2)
 	copyOne := func(label string, dst, src net.Conn) {
-		spawned := p.tunnels.go_(label, func(ctx context.Context) {
+		spawned := p.tunnels.spawn(label, func(ctx context.Context) {
 			done := make(chan struct{})
 			defer close(done)
 			go func() {
@@ -536,9 +543,9 @@ func (p *Proxy) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		if splitErr != nil {
 			return nil, splitErr
 		}
-		pinned, err := p.resolveAndPin(ctx, dialHost)
-		if err != nil {
-			return nil, err
+		pinned, pinErr := p.resolveAndPin(ctx, dialHost)
+		if pinErr != nil {
+			return nil, pinErr
 		}
 		return p.innerDial(ctx, network, net.JoinHostPort(pinned.String(), dialPort))
 	}
@@ -549,7 +556,10 @@ func (p *Proxy) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		DisableKeepAlives:     true,
 	}
 
-	outReq, err := http.NewRequestWithContext(r.Context(), r.Method, r.URL.String(), r.Body)
+	// Forwarding to the client's URL is this proxy's job (gosec G704): the
+	// host passed domainAllowed above, and the transport's dialer pins every
+	// connection through the SSRF guard.
+	outReq, err := http.NewRequestWithContext(r.Context(), r.Method, r.URL.String(), r.Body) //nolint:gosec // G704: see above
 	if err != nil {
 		http.Error(w, fmt.Sprintf("build request: %v", err), http.StatusInternalServerError)
 		return
@@ -576,7 +586,7 @@ func (p *Proxy) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		Timeout: timeout,
 	}
 
-	resp, err := client.Do(outReq)
+	resp, err := client.Do(outReq) //nolint:gosec // G704: see NewRequestWithContext above
 	if err != nil {
 		if errors.Is(err, ErrSSRFBlocked) {
 			p.onDeny(host, "ssrf")
@@ -586,7 +596,7 @@ func (p *Proxy) handleHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("upstream: %v", err), http.StatusBadGateway)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	for k, vv := range resp.Header {
 		for _, v := range vv {

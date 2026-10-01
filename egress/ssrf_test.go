@@ -308,14 +308,14 @@ func TestGuard_DialContext_ZeroValueUsesRealDialerOnPinnedLiteral(t *testing.T) 
 	defer func() { _ = ln.Close() }()
 	accepted := make(chan struct{}, 1)
 	go func() {
-		if c, err := ln.Accept(); err == nil {
+		if c, acceptErr := ln.Accept(); acceptErr == nil {
 			accepted <- struct{}{}
 			_ = c.Close()
 		}
 	}()
 	var g Guard
-	if _, err := g.DialContext(context.Background(), "tcp", ln.Addr().String()); !errors.Is(err, ErrSSRFBlocked) {
-		t.Fatalf("zero-value Guard to loopback error = %v, want ErrSSRFBlocked", err)
+	if _, dialErr := g.DialContext(context.Background(), "tcp", ln.Addr().String()); !errors.Is(dialErr, ErrSSRFBlocked) {
+		t.Fatalf("zero-value Guard to loopback error = %v, want ErrSSRFBlocked", dialErr)
 	}
 	select {
 	case <-accepted:
@@ -399,7 +399,7 @@ func TestGuard_HTTPClient_AllowedRequestSucceeds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", resp.StatusCode)
 	}
@@ -441,7 +441,7 @@ func TestGuard_HTTPClient_URLHostForms(t *testing.T) {
 		t.Run(raw, func(t *testing.T) {
 			resp, err := client.Get(raw)
 			if err == nil {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 			}
 		})
 	}

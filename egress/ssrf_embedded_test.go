@@ -70,7 +70,7 @@ func TestResolveAndPin_EmbeddedLoopbackDeniedEvenWithAllowLocalhost(t *testing.T
 	}
 }
 
-// Special-purpose ranges the deny set was missing, and their neighbours.
+// Special-purpose ranges the deny set was missing, and their neighbors.
 func TestResolveAndPin_SpecialPurposeRanges(t *testing.T) {
 	for _, addr := range []string{
 		"255.255.255.255", // limited broadcast

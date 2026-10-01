@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 While the project is pre-1.0, the public API may change between minor
 versions; breaking changes are called out in the relevant entry.
 
+## v0.2.4 — 2026-10-01
+
+CI and the portfolio lint baseline (CW-20260930-0029).
+
+### Security
+
+- **The proxy's HTTP server sets `ReadHeaderTimeout` (30s).** It had no
+  header deadline, so a client could open connections and trickle header
+  bytes to hold them open indefinitely (Slowloris; gosec G112). The
+  deadline covers only reading a request's headers. A CONNECT tunnel is
+  hijacked once its headers are read, so its lifetime is still governed by
+  `CONNECTDeadline`.
+
+### Changed
+
+- **Plain-HTTP forwarding closes the upstream response body explicitly**
+  and discards the error, as before.
+- **The tunnel tracker's internal `go_` is renamed `spawn`.** Behaviour is
+  unchanged.
+
+### CI
+
+- **`.github/workflows/check.yml`** runs gofmt, vet, golangci-lint (pinned
+  v2.11.4), `go test -race` and govulncheck (pinned v1.8.0) on push and on
+  pull request.
+- **`.golangci.yml`** is the portfolio go-baseline config. The whole tree is
+  clean against it, so there is no ratchet.
+- **The pre-existing errcheck findings are fixed**: 33 under golangci's
+  default config, shown capped as 15.
+  - Test writes and deadlines are checked and fail the test.
+  - Deferred `Close` calls discard their error explicitly.
+  - The example logs a `Stop` error.
+- **Baseline findings fixed:**
+  - shadowed `err`s;
+  - US spellings;
+  - the `ErrSSRFBlocked` doc form;
+  - the CONNECT TLS test now trusts the test server's certificate instead
+    of `InsecureSkipVerify`.
+- **Two gosec findings are annotated as intended:**
+  - G704: forwarding to the client's URL is the proxy's job, and the
+    dialer pins it through the SSRF guard.
+  - G118: v2.11.4 misses that `newTunnels`' cancel is stored and called
+    by `shutdown`.
+
 ## v0.2.3 — 2026-10-01
 
 ### Fixed

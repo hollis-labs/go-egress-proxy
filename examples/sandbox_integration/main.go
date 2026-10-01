@@ -41,7 +41,11 @@ func main() {
 	if err := proxy.Start(); err != nil {
 		log.Fatalf("egress: start: %v", err)
 	}
-	defer proxy.Stop()
+	defer func() {
+		if err := proxy.Stop(); err != nil {
+			log.Printf("egress: stop: %v", err)
+		}
+	}()
 
 	cmd := exec.Command("claude", "--print", "hello")
 	cmd.Stdout = os.Stdout
