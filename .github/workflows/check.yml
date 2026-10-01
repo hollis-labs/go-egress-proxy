@@ -1,0 +1,44 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: go fmt (verify)
+        run: |
+          out=$(gofmt -l .)
+          if [ -n "$out" ]; then
+            echo "Files need gofmt:"
+            echo "$out"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      # .golangci.yml is the portfolio go-baseline config. The whole tree is
+      # clean against it (CW-20260930-0029), so there is no ratchet: every
+      # finding fails the build.
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.11.4
+          install-mode: goinstall
+
+      - name: go test -race
+        run: go test -race -count=1 ./...
+
+      # Pinned, not @latest: an unpinned scanner changes its verdict without a
+      # commit. v1.8.0 declares `go 1.26.0`.
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...

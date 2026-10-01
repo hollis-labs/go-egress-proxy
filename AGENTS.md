@@ -25,10 +25,15 @@ confinement, no traffic inspection.
 ```bash
 gofmt -l .
 go vet ./...
+golangci-lint run
 go test -race -count=1 ./...
+go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
 ```
 
-There is no CI workflow in this repo, so these are the only gate.
+`.github/workflows/check.yml` runs those five on push and on pull request to
+`main`, with golangci-lint pinned at v2.11.4, and is the landing gate.
+`.golangci.yml` is the portfolio go-baseline config. The tree is clean
+against it with no ratchet, so any new finding fails the build.
 
 ## Boundaries
 

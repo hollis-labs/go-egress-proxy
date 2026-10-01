@@ -8,7 +8,7 @@ import (
 )
 
 // tunnels coordinates the goroutines spawned by CONNECT tunnel handlers.
-// It provides a context that is cancelled on shutdown, a WaitGroup that
+// It provides a context that is canceled on shutdown, a WaitGroup that
 // shutdown drains with a bounded window, and an active-count for tests
 // that assert no tunnel leaked.
 //
@@ -22,7 +22,7 @@ type tunnels struct {
 	wg     sync.WaitGroup
 	active atomic.Int64
 
-	// mu orders go_'s closed check and wg.Add against shutdown setting
+	// mu orders spawn's closed check and wg.Add against shutdown setting
 	// closed, so every Add happens before shutdown's Wait or is refused.
 	// Without it an Add could land while Wait was already running on a zero
 	// counter (CW-20260930-0031): a documented WaitGroup misuse, and a
@@ -32,15 +32,14 @@ type tunnels struct {
 }
 
 func newTunnels() *tunnels {
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background()) //nolint:gosec // G118: cancel is kept as tunnels.cancel and called by shutdown
 	return &tunnels{ctx: ctx, cancel: cancel}
 }
 
-// go_ spawns fn as a tracked goroutine and reports whether it did. fn
-// receives the tunnels' context, which is cancelled on shutdown. Once
-// shutdown has been called, go_ spawns nothing and returns false. The
-// trailing underscore avoids shadowing the Go keyword.
-func (t *tunnels) go_(_ string, fn func(ctx context.Context)) bool {
+// spawn runs fn as a tracked goroutine and reports whether it did. fn
+// receives the tunnels' context, which is canceled on shutdown. Once
+// shutdown has been called, spawn starts nothing and returns false.
+func (t *tunnels) spawn(_ string, fn func(ctx context.Context)) bool {
 	t.mu.Lock()
 	if t.closed {
 		t.mu.Unlock()

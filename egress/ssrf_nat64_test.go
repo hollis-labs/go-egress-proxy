@@ -39,7 +39,7 @@ func TestResolveAndPin_BlocksNAT64SynthesizedIMDS(t *testing.T) {
 }
 
 func TestResolveAndPin_NAT64PrefixBoundaries(t *testing.T) {
-	// Neighbouring prefixes are not NAT64 and must stay reachable.
+	// Neighboring prefixes are not NAT64 and must stay reachable.
 	for _, raw := range []string{"64:ff9a::a9fe:a9fe", "64:ff9c::1", "64:ff9b:2::1", "64:ff9b:0:1::1"} {
 		if _, err := ResolveAndPin(context.Background(), stubResolver(raw), "x.example", false); err != nil {
 			t.Errorf("ResolveAndPin(%s) = %v, want allowed", raw, err)
