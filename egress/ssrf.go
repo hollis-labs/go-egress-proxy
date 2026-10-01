@@ -77,23 +77,73 @@ func ResolveAndPin(ctx context.Context, resolver Resolver, host string, allowLoc
 		}
 	}
 	for _, ip := range ips {
-		if !allowLocalhost {
-			for _, block := range builtinLoopbackCIDRs {
-				if block.Contains(ip) {
-					return nil, fmt.Errorf("%w: loopback %s", ErrSSRFBlocked, ip)
-				}
-			}
+		if reason, denied := deniedReason(ip, allowLocalhost); denied {
+			return nil, fmt.Errorf("%w: %s", ErrSSRFBlocked, reason)
 		}
-		for _, block := range builtinDeniedCIDRs {
-			if block.Contains(ip) {
-				return nil, fmt.Errorf("%w: %s in %s", ErrSSRFBlocked, ip, block)
+		// An IPv6 transition form is judged by the IPv4 it carries.
+		// AllowLocalhost does not extend to it: a loopback address reached
+		// through a translator or tunnel is not this host.
+		for _, v4 := range embeddedIPv4s(ip) {
+			if reason, denied := deniedReason(v4, false); denied {
+				return nil, fmt.Errorf("%w: %s embeds %s", ErrSSRFBlocked, ip, reason)
 			}
-		}
-		if ip.IsUnspecified() {
-			return nil, fmt.Errorf("%w: unspecified %s", ErrSSRFBlocked, ip)
 		}
 	}
 	return ips[0], nil
+}
+
+// deniedReason reports whether ip is in the deny set, and which part.
+// Loopback is denied only without allowLocalhost.
+func deniedReason(ip net.IP, allowLocalhost bool) (string, bool) {
+	if !allowLocalhost {
+		for _, block := range builtinLoopbackCIDRs {
+			if block.Contains(ip) {
+				return fmt.Sprintf("loopback %s", ip), true
+			}
+		}
+	}
+	for _, block := range builtinDeniedCIDRs {
+		if block.Contains(ip) {
+			return fmt.Sprintf("%s in %s", ip, block), true
+		}
+	}
+	if ip.IsUnspecified() {
+		return fmt.Sprintf("unspecified %s", ip), true
+	}
+	return "", false
+}
+
+// embeddedIPv4s returns the IPv4 addresses an IPv6 transition-form address
+// carries, for ResolveAndPin to judge; any denied one denies the address.
+// Ported from Nanite internal/ssrf (nanite#357). For Teredo both the server
+// address and the client address (stored XORed with 0xffffffff) are
+// returned. The NAT64 local-use prefix is not read here: the deny set
+// refuses all of it.
+//
+// The IPv4-compatible range ::/96 also holds :: and ::1, which are judged
+// as IPv6 (unspecified, loopback) and are not read as 0.0.0.0 and 0.0.0.1.
+func embeddedIPv4s(ip net.IP) []net.IP {
+	if ip.To4() != nil {
+		return nil
+	}
+	b := ip.To16()
+	if b == nil {
+		return nil
+	}
+	switch {
+	case nat64WellKnown.Contains(ip):
+		return []net.IP{net.IPv4(b[12], b[13], b[14], b[15])}
+	case sixToFour.Contains(ip):
+		return []net.IP{net.IPv4(b[2], b[3], b[4], b[5])}
+	case teredo.Contains(ip):
+		return []net.IP{
+			net.IPv4(b[4], b[5], b[6], b[7]),
+			net.IPv4(^b[12], ^b[13], ^b[14], ^b[15]),
+		}
+	case ipv4Compatible.Contains(ip) && !ip.Equal(net.IPv6unspecified) && !ip.Equal(net.IPv6loopback):
+		return []net.IP{net.IPv4(b[12], b[13], b[14], b[15])}
+	}
+	return nil
 }
 
 // Guard is an SSRF-safe dial policy for a caller's own outbound HTTP

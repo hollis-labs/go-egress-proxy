@@ -126,18 +126,41 @@ const (
 // Loopback is gated separately so AllowLocalhost can permit it without
 // weakening the rest.
 var builtinDeniedCIDRs = mustParseCIDRs([]string{
-	"169.254.0.0/16", // link-local incl. cloud IMDS (AWS, GCP, Azure)
-	"10.0.0.0/8",     // RFC1918
-	"172.16.0.0/12",  // RFC1918
-	"192.168.0.0/16", // RFC1918
-	"0.0.0.0/8",      // unspecified
-	"100.64.0.0/10",  // CGNAT
-	"fc00::/7",       // IPv6 ULA
-	"fe80::/10",      // IPv6 link-local
-	"::/128",         // IPv6 unspecified
-	"64:ff9b::/96",   // NAT64 well-known prefix (RFC 6052): embeds any IPv4, incl. 169.254.169.254
-	"64:ff9b:1::/48", // NAT64 local-use prefix (RFC 8215): same embedding
+	"169.254.0.0/16",     // link-local incl. cloud IMDS (AWS, GCP, Azure)
+	"10.0.0.0/8",         // RFC1918
+	"172.16.0.0/12",      // RFC1918
+	"192.168.0.0/16",     // RFC1918
+	"0.0.0.0/8",          // unspecified
+	"100.64.0.0/10",      // CGNAT
+	"192.0.0.0/24",       // IETF protocol assignments (RFC 6890), incl. 192.0.0.170 NAT64 discovery
+	"192.88.99.0/24",     // 6to4 relay anycast (RFC 3068, deprecated by RFC 7526)
+	"198.18.0.0/15",      // benchmarking (RFC 2544)
+	"240.0.0.0/4",        // reserved (RFC 1112)
+	"255.255.255.255/32", // limited broadcast (inside 240/4; listed for the record)
+	"fc00::/7",           // IPv6 ULA
+	"fe80::/10",          // IPv6 link-local
+	"fec0::/10",          // IPv6 site-local (deprecated, RFC 3879)
+	"::/128",             // IPv6 unspecified
+	// NAT64 local-use prefix (RFC 8215), denied whole: the operator picks
+	// the prefix length inside it, so where the embedded IPv4 sits
+	// (RFC 6052 section 2.2) cannot be known from the address. The
+	// well-known prefix 64:ff9b::/96 is not listed: its embedded IPv4 is
+	// read and judged instead (embeddedIPv4s), so DNS64 egress to a public
+	// IPv4 works and a synthesized metadata address does not.
+	"64:ff9b:1::/48",
 })
+
+// IPv6 transition forms that carry an IPv4 the sender picks. A DNS answer in
+// one of these forms matches none of the IPv6 ranges above, so ResolveAndPin
+// reads the embedded IPv4 out of it (embeddedIPv4s) and judges that by the
+// IPv4 ranges. IPv4-mapped (::ffff:0:0/96) needs no entry: net.IPNet.Contains
+// already compares it as IPv4.
+var (
+	nat64WellKnown = mustParseCIDRs([]string{"64:ff9b::/96"})[0] // RFC 6052: IPv4 in the last 32 bits
+	sixToFour      = mustParseCIDRs([]string{"2002::/16"})[0]    // RFC 3056: IPv4 in bits 16-47
+	teredo         = mustParseCIDRs([]string{"2001::/32"})[0]    // RFC 4380: server IPv4, and the client IPv4 XORed
+	ipv4Compatible = mustParseCIDRs([]string{"::/96"})[0]        // RFC 4291 (deprecated): IPv4 in the last 32 bits
+)
 
 var builtinLoopbackCIDRs = mustParseCIDRs([]string{
 	"127.0.0.0/8",
