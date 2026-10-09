@@ -13,7 +13,8 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          # Preserve the language floor; use the patched Go toolchain in CI.
+          go-version: '1.26.9'
 
       - name: go fmt (verify)
         run: |

@@ -1,5 +1,21 @@
 # go-egress-proxy
 
+## Moved to substrate
+
+This standalone repository is deprecated. New development lives in the
+[`github.com/hollis-labs/substrate/harness`](https://github.com/hollis-labs/substrate/tree/harness/v0.3.0/harness)
+module, released as **`harness/v0.3.0`**.
+
+```sh
+go get github.com/hollis-labs/substrate/harness@v0.3.0
+```
+
+Follow the [package and API migration guide](https://github.com/hollis-labs/substrate/blob/harness/v0.3.0/harness/docs/units/go-egress-proxy/MIGRATION.md) when updating imports;
+the consolidation can include API changes. Existing standalone tags and history
+are preserved. The documentation below describes the standalone releases and
+is retained for historical reference. Applications migrate separately; this
+redirect does not deploy or update any consumer.
+
 `go-egress-proxy` is a small, standalone Go library that runs a host-side, domain-allowlisted HTTP proxy intended for sandboxed child processes. It is the network-policy half of the picture deliberately excluded from [`go-sandbox`](https://github.com/hollis-labs/go-sandbox).
 
 The proxy spawns on `127.0.0.1` (random port by default), exposes its address via `(*Proxy).EnvVars` for callers to merge into the child's `HTTP_PROXY` / `HTTPS_PROXY`, and enforces a domain allowlist plus an SSRF deny set on every request before any dial. CONNECT is restricted to TLS ports (443, 8443) by default.
